@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.gitignore
+npm-debug.log
+README.md
+.env*
+.vscode
+infra
+azure-pipelines.yml
+**/*.test.ts
+**/*.spec.ts
+coverage
+.DS_Store

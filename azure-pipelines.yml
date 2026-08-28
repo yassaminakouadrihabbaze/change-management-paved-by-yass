@@ -1,0 +1,99 @@
+# SKELETON — review before production.
+# Azure DevOps pipeline for the next-azure-postgres stack. Triggers from the GitHub repo on merge to
+# main, provisions/updates infra (Terraform), builds + pushes the image to ACR, runs Prisma
+# migrations, then deploys a new Container App revision.
+#
+# Prerequisites (Phase-0 bootstrap, see infra/README.md):
+#   - An ADO service connection to the subscription (prefer workload-identity federation).
+#   - The GitHub repo connected to this pipeline.
+#   - Remote Terraform state + Key Vault secrets already seeded.
+# Replace the ALL_CAPS placeholders and the service-connection / variable-group names.
+
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  - group: next-azure-postgres-vars # ADO variable group (or link Key Vault): AZURE_SERVICE_CONNECTION, ACR_NAME, RESOURCE_GROUP, CONTAINER_APP, IMAGE_REPO
+  - name: imageTag
+    value: "$(Build.BuildId)"
+
+stages:
+  - stage: Infra
+    displayName: Terraform (provision/update)
+    jobs:
+      - job: terraform
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - task: AzureCLI@2
+            displayName: terraform init/plan/apply
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                cd infra
+                terraform init
+                terraform plan -out=tfplan
+                terraform apply -auto-approve tfplan
+            env:
+              TF_VAR_postgres_admin_password: $(POSTGRES_ADMIN_PASSWORD) # from Key Vault-linked variable group
+
+  - stage: Build
+    displayName: Build & push image
+    dependsOn: Infra
+    jobs:
+      - job: build
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - task: AzureCLI@2
+            displayName: ACR build & push
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                # `az acr build` builds in ACR (no local Docker needed on the agent).
+                az acr build --registry $(ACR_NAME) --image $(IMAGE_REPO):$(imageTag) .
+
+  - stage: Migrate
+    displayName: Prisma migrate deploy
+    dependsOn: Build
+    jobs:
+      - job: migrate
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - task: NodeTool@0
+            inputs: { versionSpec: "20.x" }
+          - task: AzureCLI@2
+            displayName: npx prisma migrate deploy
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                npm ci
+                # DATABASE_URL resolved from Key Vault (Key Vault-linked variable group), not committed.
+                npx prisma migrate deploy
+            env:
+              DATABASE_URL: $(DATABASE_URL)
+
+  - stage: Deploy
+    displayName: Deploy Container App revision
+    dependsOn: Migrate
+    jobs:
+      - job: deploy
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - task: AzureCLI@2
+            displayName: Update Container App image
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az containerapp update \
+                  --name $(CONTAINER_APP) \
+                  --resource-group $(RESOURCE_GROUP) \
+                  --image $(ACR_NAME).azurecr.io/$(IMAGE_REPO):$(imageTag)

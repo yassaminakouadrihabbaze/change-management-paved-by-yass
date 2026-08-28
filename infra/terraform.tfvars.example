@@ -1,0 +1,14 @@
+# SKELETON — copy to terraform.tfvars (gitignored) or pass via TF_VAR_* env vars.
+# NEVER commit real secrets.
+
+name_prefix = "myapp"
+location    = "eastus"
+environment = "prod"
+
+postgres_admin_login = "pgadmin"
+# Prefer: export TF_VAR_postgres_admin_password=... (do not put real secrets in a committed file)
+postgres_admin_password = "set-via-env-or-untracked-tfvars"
+
+entra_tenant_id = "your-entra-tenant-id"
+
+# app_image is updated by the pipeline per deploy; leave default until the first image is pushed.
