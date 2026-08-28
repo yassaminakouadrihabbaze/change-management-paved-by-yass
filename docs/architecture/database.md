@@ -1,6 +1,6 @@
 # Database Schema
 
-> **Status:** Draft — populated during `/init-architecture`.
+> **Status:** Approved — designed during `/init-architecture` on 2026-08-28.
 > This document is the source of truth for the data model. Update it BEFORE writing migrations.
 > Stack: **Azure Database for PostgreSQL Flexible Server** via **Prisma**.
 
@@ -12,59 +12,265 @@
 - Primary keys: `String @id @default(uuid()) @db.Uuid` (UUIDs) — portable and avoids enumerable IDs.
 - Timestamps: `createdAt DateTime @default(now())` and `updatedAt DateTime @updatedAt`
   (`TIMESTAMPTZ` in Postgres).
-- Foreign keys: use Prisma relations; default to `onDelete: Cascade` unless there's a reason not to
-  (document why).
 - **Authorization is NOT enforced in the database.** This stack does **not** use Row-Level Security.
   Access control is enforced in the application — `src/middleware.ts` (route level) and per-record
-  checks in `src/lib/data/`. See [security.md](security.md). (RLS may be added later as
-  defence-in-depth on sensitive tables; if so, document the policies here.)
+  checks in `src/lib/data/`. See [security.md](security.md).
 - Prisma parameterizes all queries; never use raw string interpolation in `$queryRawUnsafe`.
+
+### Two rules specific to this schema
+
+1. **Attribution is never lost.** Every foreign key pointing at `User` uses `onDelete: Restrict`.
+   Users are **deactivated** (`isActive = false`), never deleted. A change request must always be
+   able to name who raised it and who decided it.
+2. **History is append-only.** `StatusHistory` rows are inserted, never updated or deleted. There is
+   no application code path that modifies one. Comments are likewise immutable — no edit, no delete.
+
+---
+
+## Enums
+
+```prisma
+enum Role {
+  REQUESTER   // default for every new user
+  APPROVER    // can decide on requests assigned to them
+  MANAGER     // read-only oversight across all requests
+  ADMIN       // manages users and role assignment
+}
+
+enum ChangeStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Category {
+  SOFTWARE
+  HARDWARE
+  PROCESS
+  POLICY
+  OTHER
+}
+```
+
+> ⚠️ **`Category` values are placeholders.** The real set was not established during product
+> discovery. Confirm them when F-005 starts. Changing enum values later is a migration; making
+> categories **admin-editable** later means replacing the enum with a `Category` lookup table — a
+> contained change (one table, one FK, one admin screen), but plan it deliberately rather than
+> drifting into it.
+
+> **Role is a single value, not a set.** A user holds exactly one role. Creating and tracking your
+> own requests is available to *every* signed-in user regardless of role, so a Manager or Approver
+> can still raise a change. Roles gate only: deciding, org-wide oversight, and administration.
+
+---
 
 ## Tables
 
-### users / accounts / sessions (Auth.js)
-Auth.js (NextAuth) with a database session strategy uses adapter-managed tables (`User`, `Account`,
-`Session`, `VerificationToken`). If you use the JWT session strategy instead, you may not need all of
-them. Document the chosen strategy during `/init-architecture`. Extend the user model with app fields
-(e.g. `role`) as needed.
+### User
+
+Created just-in-time by the Auth.js Prisma adapter on first successful Entra ID sign-in. **There is
+no sign-up flow** — the org directory is the source of who exists.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | Primary key |
-| email | TEXT | From Entra ID claims |
-| name | TEXT | Display name |
-| role | TEXT | Application role (e.g. 'user', 'admin') — drives authorization |
+| email | TEXT (unique) | From Entra ID claims |
+| name | TEXT (nullable) | Display name from Entra ID |
+| emailVerified | TIMESTAMPTZ (nullable) | Auth.js adapter field; unused with Entra ID |
+| image | TEXT (nullable) | Auth.js adapter field |
+| role | `Role` | Application role. Defaults to `REQUESTER` |
+| isActive | BOOLEAN | `false` revokes access without deleting the record. Default `true` |
 | createdAt | TIMESTAMPTZ | Record creation time |
 | updatedAt | TIMESTAMPTZ | Last update time |
 
-**Access:** enforced in `src/lib/data/` + `src/middleware.ts` (no DB-level policies).
+**Indexes:** `@@index([role])` — the approver picker and the admin screen both filter by role.
+
+**Access:** read of own record — any authenticated user. Read of all users — `ADMIN` (full) and any
+user needing the approver picker (restricted projection: id + name only, `role = APPROVER`,
+`isActive = true`). Write to `role` / `isActive` — `ADMIN` only, enforced in
+`src/lib/data/users.ts`.
 
 ---
 
-> Add real models here as the data model is designed. Each table needs:
-> - Column definitions with types and descriptions
-> - How access is controlled (which middleware check + which data-layer check)
-> - Indexes (if needed for performance)
-> - Relationships to other tables
+### Account
+
+Standard Auth.js adapter table linking a `User` to their Entra ID identity. Not modified by
+application code.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| userId | UUID → User | `onDelete: Cascade` (adapter-managed) |
+| type, provider, providerAccountId | TEXT | OIDC identity linkage |
+| (token fields) | TEXT (nullable) | Adapter-managed |
+
+> No `Session` or `VerificationToken` table. Sessions are **JWT**, not database-backed — see
+> [security.md](security.md) for why.
+
+---
+
+### ChangeRequest
+
+The core entity.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| title | TEXT | Short summary of the change |
+| description | TEXT | What is changing and why |
+| category | `Category` | Classifies the change; drives filtering |
+| priority | `Priority` | Defaults to `MEDIUM`; drives filtering |
+| targetDate | DATE (nullable) | Nullable so a draft can be saved incomplete. **Required at submit** — enforced by Zod, not by the column |
+| status | `ChangeStatus` | Defaults to `DRAFT` |
+| requesterId | UUID → User | `onDelete: Restrict`. Who raised it |
+| approverId | UUID → User (nullable) | `onDelete: Restrict`. Null until submitted; chosen by the requester at submit |
+| createdAt | TIMESTAMPTZ | The PRD's "created date" |
+| updatedAt | TIMESTAMPTZ | Last modification |
+
+**Indexes:**
+
+| Index | Serves |
+|-------|--------|
+| `@@index([status])` | Dashboard status filter |
+| `@@index([requesterId])` | "My Requests" tab |
+| `@@index([approverId, status])` | "Awaiting My Decision" tab — the hottest query |
+| `@@index([createdAt])` | Default dashboard sort and date filtering |
+| `@@index([category])` | Category filter |
+
+> Deliberately **not** indexed: `priority`. It has four values across a small table, so an index
+> would not be selective enough to earn its write cost. Revisit if the table grows large and
+> priority-filtered queries show up slow.
+
+**Access:**
+- Read — requester (own), assigned approver, `MANAGER`, `ADMIN`. Enforced per-record in
+  `src/lib/data/change-requests.ts`.
+- Create — any authenticated active user.
+- Update of content fields — requester only, and only while `status = DRAFT`.
+- Update of `status` — governed by the transition guard (below).
+- Delete — requester only, and only while `status = DRAFT`. Anything submitted is never deleted.
+
+**Derived timestamps are deliberately absent.** No `submittedAt` / `decidedAt` / `completedAt`
+columns: `StatusHistory` already holds every transition with its time and actor, and duplicating
+that invites the two disagreeing. If a dashboard query later needs "recently decided" sorting
+without a join, add them as a denormalization then — with `StatusHistory` still authoritative.
+
+---
+
+### Comment
+
+Discussion attached to a request. **Immutable** — no edit, no delete, no `updatedAt`.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| changeRequestId | UUID → ChangeRequest | `onDelete: Cascade` |
+| authorId | UUID → User | `onDelete: Restrict` |
+| body | TEXT | Comment text |
+| createdAt | TIMESTAMPTZ | When it was posted |
+
+**Indexes:** `@@index([changeRequestId, createdAt])` — the only access pattern is "all comments on
+this request, oldest first".
+
+**Access:** anyone who can read the parent request can read its comments and post one. Enforced by
+delegating to the request's own read check — there is no separate comment permission.
+
+---
+
+### StatusHistory
+
+The audit trail. One row per transition, **append-only**.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | Primary key |
+| changeRequestId | UUID → ChangeRequest | `onDelete: Cascade` |
+| actorId | UUID → User | `onDelete: Restrict`. Who performed the transition |
+| fromStatus | `ChangeStatus` (nullable) | Null on the creation row |
+| toStatus | `ChangeStatus` | Resulting status |
+| note | TEXT (nullable) | Decision reason — captured on reject and request-changes |
+| createdAt | TIMESTAMPTZ | When it happened |
+
+**Indexes:** `@@index([changeRequestId, createdAt])` — renders the timeline on the detail page.
+
+**Access:** anyone who can read the parent request can read its history. **No write path exists
+other than `recordTransition()`** in `src/lib/data/status-history.ts`, which is called inside the
+same transaction as the status change it records.
+
+> **Cascade note:** history cascades on request delete, which is safe only because a request is
+> deletable *only* while `DRAFT` — at which point its history is a single creation row. Submitted
+> requests are never deleted, so no audit trail is ever destroyed.
+
+---
+
+## Status Transition Rules
+
+Enforced by a single guard, `canTransition(from, to, actor, request)`, in `src/lib/transitions.ts`.
+Every status change goes through it — there are no ad-hoc status writes anywhere in the codebase.
+
+| From | To | Who may do it |
+|------|----|---------------|
+| *(none)* | `DRAFT` | Any authenticated active user (creation) |
+| `DRAFT` | `SUBMITTED` | Requester (owner). Requires `approverId` and `targetDate` |
+| `SUBMITTED` | `UNDER_REVIEW` | Assigned approver (explicit "Start review" action) |
+| `UNDER_REVIEW` | `APPROVED` | Assigned approver |
+| `UNDER_REVIEW` | `REJECTED` | Assigned approver. Note required |
+| `UNDER_REVIEW` | `CHANGES_REQUESTED` | Assigned approver. Note required |
+| `CHANGES_REQUESTED` | `DRAFT` | Requester (owner), by choosing to edit |
+| `APPROVED` | `IN_PROGRESS` | Requester (owner) |
+| `IN_PROGRESS` | `COMPLETED` | Requester (owner) |
+
+Any pair not in this table is rejected. `REJECTED` and `COMPLETED` are terminal.
+
+**Why `SUBMITTED → UNDER_REVIEW` is an explicit action, not automatic on open:** auto-transitioning
+when an approver views a request would write a history entry every time someone glances at it, and
+would make "under review" mean "someone clicked it once". An explicit action means the status
+reflects a real commitment.
+
+**Why `CHANGES_REQUESTED` is a persisted status rather than an immediate bounce to `DRAFT`:** it
+gives the requester a visible "this needs your attention" state on the dashboard. Going straight to
+`DRAFT` would return the same end state but the request would blend silently back into their drafts.
+
+---
 
 ## Entity Relationship Summary
 
 ```
-[User] 1──── ... ────* [other_table]
+[User] 1───────* [ChangeRequest]     (as requester — Restrict)
+[User] 1───────* [ChangeRequest]     (as approver, nullable — Restrict)
+[User] 1───────* [Comment]           (as author — Restrict)
+[User] 1───────* [StatusHistory]     (as actor — Restrict)
+[User] 1───────* [Account]           (Auth.js — Cascade)
+
+[ChangeRequest] 1───────* [Comment]        (Cascade)
+[ChangeRequest] 1───────* [StatusHistory]  (Cascade)
 ```
 
 ## Migration History
 
 | Migration | Description | Date |
 |-----------|-------------|------|
-| (prisma) initial | Create initial models | TBD |
+| (prisma) initial | User, Account, ChangeRequest, Comment, StatusHistory + enums | TBD — created in F-005 |
 
 ## Notes on Azure PostgreSQL Flexible Server
 
 - Migrations run against the managed server; the pipeline runs `prisma migrate deploy` before
   deploying the new revision (see [environments.md](../development/environments.md)).
-- Connection uses `DATABASE_URL` (sourced from Key Vault at runtime). For the Prisma client, ensure
-  `sslmode=require` is set in the connection string.
+- Connection uses `DATABASE_URL` (sourced from Key Vault at runtime). Ensure `sslmode=require` is set
+  in the connection string.
 - ⚠️ **Destructive migrations are not reversible by `git revert`** — dropping a column/table loses
   data. Take a backup (Flexible Server supports point-in-time restore) before destructive changes,
-  and treat them as high-risk (an autonomous "vibe" variant must escalate these).
+  and treat them as high-risk.
+- **Transactions:** a status change and its `StatusHistory` row must be written in the same
+  `prisma.$transaction()`. A status change without its history entry is a defect, not a nuisance.
