@@ -1,4 +1,18 @@
+import { loadEnvConfig } from '@next/env'
 import { defineConfig, devices } from '@playwright/test'
+
+/**
+ * Load .env.local into the test process.
+ *
+ * Next.js loads it for the dev server, but Playwright runs in a separate process
+ * that does not. Authenticated tests mint session cookies with AUTH_SECRET, so
+ * without this they fail with "AUTH_SECRET must be set".
+ *
+ * `@next/env` is used rather than adding `dotenv`: it already ships with Next
+ * and applies exactly the same file precedence the app itself uses, so the tests
+ * cannot drift from the server's view of the environment.
+ */
+loadEnvConfig(process.cwd())
 
 /**
  * Port 3456, not 3000, deliberately.

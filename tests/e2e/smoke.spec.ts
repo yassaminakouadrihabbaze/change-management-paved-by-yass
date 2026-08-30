@@ -1,15 +1,16 @@
 import { expect, test } from '@playwright/test'
 
 /**
- * F-001 smoke tests: the scaffold serves a working page.
+ * Scaffolding smoke tests (F-001): the app serves a working, styled page with
+ * the configured security headers.
  *
- * These are deliberately thin. Real user-journey specs (the three flows in the
- * PRD) arrive with the features that implement them — there is nothing to
- * journey through yet.
+ * Retargeted from `/` to `/signin` in F-002. The root route is now a
+ * session-aware redirect rather than a landing page, so `/signin` is the public
+ * page that actually renders. The criteria being proven are unchanged.
  */
 test.describe('scaffolding smoke', () => {
-  test('F-001 AC-1: serves the landing page', async ({ page }) => {
-    const response = await page.goto('/')
+  test('F-001 AC-1: serves a page', async ({ page }) => {
+    const response = await page.goto('/signin')
 
     expect(response?.status()).toBe(200)
     await expect(page).toHaveTitle(/Change Management System/)
@@ -19,19 +20,20 @@ test.describe('scaffolding smoke', () => {
   test('F-001 AC-9: renders styled content, proving the Tailwind pipeline works', async ({
     page,
   }) => {
-    await page.goto('/')
+    await page.goto('/signin')
 
     const heading = page.getByRole('heading', { name: 'Change Management System' })
     await expect(heading).toBeVisible()
 
-    // If Tailwind had not compiled, this would fall back to the browser default
-    // (~32px for an h1) rather than the text-4xl the page asks for.
+    // The heading carries `text-2xl` (24px). A browser's default h1 is 2em =
+    // 32px, so seeing exactly 24px proves Tailwind compiled and applied — an
+    // unstyled page would report 32.
     const fontSize = await heading.evaluate((el) => window.getComputedStyle(el).fontSize)
-    expect(parseFloat(fontSize)).toBeGreaterThan(32)
+    expect(parseFloat(fontSize)).toBe(24)
   })
 
   test('F-001 AC-7: sends the configured security headers', async ({ page }) => {
-    const response = await page.goto('/')
+    const response = await page.goto('/signin')
     const headers = response?.headers() ?? {}
 
     expect(headers['x-content-type-options']).toBe('nosniff')

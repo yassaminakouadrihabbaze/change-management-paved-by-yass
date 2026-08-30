@@ -19,8 +19,8 @@
 | ID | Feature | Priority | Status | Dependencies | Branch | Completed |
 |----|---------|----------|--------|--------------|--------|-----------|
 | F-001 | Project scaffolding (per architecture decisions / chosen stack) | P0 | ✅ | — | `feature/F-001` | 2026-08-28 |
-| F-002 | Authentication — Entra ID sign in / sign out (**no sign-up**) | P0 | 📋 | F-001 | | |
-| F-003 | Initial migration + access-control policies + middleware route/role gate | P0 | 📋 | F-002 | | |
+| F-002 | Authentication — Entra ID sign in / sign out (**no sign-up**) | P0 | 🔨 | F-001 | `feature/F-002` | |
+| F-003 | Access-control policies + role-aware route gate + `isActive` enforcement | P0 | 📋 | F-002 | | |
 | F-004 | Environment config (dev/preview/prod) | P0 | 📋 | F-001 | | |
 
 > **Technical notes from `/init-architecture`:**
@@ -36,8 +36,13 @@
 >   specified in [database.md](../architecture/database.md). **F-003 is therefore narrowed to:** the
 >   initial migration (needs a reachable database, hence after F-002/F-004), `isActive` enforcement in
 >   the data layer, access-control policies, and the middleware route/role gate.
-> - **No migration exists yet.** `prisma/schema.prisma` is defined and the client generates, but
->   `prisma migrate dev` needs a live database. `prisma/migrations/` is deliberately absent until F-003.
+> - **⚠️ The initial migration moved from F-003 into F-002** (2026-08-28). `PrismaAdapter` writes
+>   `User` and `Account` rows on first sign-in, so the tables must exist before authentication can
+>   work at all — F-003 running *after* F-002 was an impossible ordering. **F-003 is therefore
+>   narrowed again to:** access-control policies, the role-aware route gate, and `isActive`
+>   enforcement in the data layer.
+> - **⛔ The migration still does not exist.** It was in F-002's scope but is blocked on the local
+>   PostgreSQL password (`scram-sha-256` required; credentials unknown). See **FN-7**.
 > - **F-006's transition guard depends on the `Role` enum**, which now already exists.
 
 ## Phase 2: Core Features
@@ -136,6 +141,11 @@
 | 2026-08-28 | Prettier does not format Markdown | Hand-authored docs with deliberate table alignment; Prettier reflowed 19 files. `*.md` excluded in `.prettierignore`. |
 | 2026-08-28 | E2E suite runs on port 3456, `reuseExistingServer: false` | Ports 3000 and 3100 host other Next.js apps on this machine; reuse would have tested the wrong application. |
 | 2026-08-28 | `vite-tsconfig-paths` dropped for a manual Vitest alias | ESM-only, unloadable from a CJS config. One line beat a dependency (dependencies.md rule 6). |
+| 2026-08-28 | Initial migration moved from F-003 into F-002 | `PrismaAdapter` needs `User`/`Account` to exist before any sign-in; F-003 running after F-002 was impossible. |
+| 2026-08-28 | Auth-dependent E2E uses signed session cookies, **not** a dev credentials provider | A credentials path is a password backdoor in application code; one bad env var ships it. The test helper lives in `tests/` with no production code path. |
+| 2026-08-28 | Env validation **rejects** a `/common` issuer rather than warning | The Auth.js provider defaults to `/common` when `issuer` is omitted, which admits any Microsoft account. It fails open and silently, so it is refused at config parse time. |
+| 2026-08-28 | A minimal `/dashboard` ships in F-002 | Route protection needs something to protect. F-010 replaces the contents; the route and its gate remain. |
+| 2026-08-28 | `@next/env` loads `.env.local` for Playwright | Playwright runs in its own process. Reuses Next's own loader rather than adding `dotenv`. |
 | 2026-08-28 | `.gitattributes` pins `eol=lf` for all text files | `core.autocrlf=true` rewrote checkouts to CRLF; Prettier (`endOfLine: "lf"`) then failed all 20 source files. Would have passed Linux CI while failing every Windows clone. Fixed in PR #2. |
 
 ---
@@ -148,7 +158,9 @@
 |---|---------|----------|--------|-------------------|
 | FN-1 | **No CI runs on pull requests.** Zero check runs on PR #1 and PR #2. `azure-pipelines.yml` targets Azure DevOps, which is not connected to this GitHub repo — it needs an ADO project, a service connection, and the `next-azure-postgres-vars` variable group. Until then, the only verification is whatever a developer runs locally. | **High** | F-001 | F-004 (environment config), or add a GitHub Actions workflow running lint/typecheck/test/build |
 | FN-2 | **No branch protection on `main`.** `docs/development/git-workflow.md` recommends four settings (require PR, require status checks, block force pushes, block deletion); none is configured, so `main` accepts direct pushes. This undercuts the "never commit directly to main" rule, which is currently honoured by convention alone. | **High** | F-001 | Repo owner, in GitHub settings. Best done *after* FN-1, since "require status checks" needs checks to exist |
-| FN-3 | **No database migration exists.** `prisma/schema.prisma` defines `User`, `Account` and `Role`, but `prisma migrate dev` needs a reachable database. `prisma/migrations/` is deliberately absent. | Medium | F-001 | F-003, once F-004 provides a connection string |
+| FN-3 | ~~No database migration exists~~ — **superseded by FN-7.** The migration moved into F-002 and is now blocked on credentials rather than on scheduling. | — | F-001 | Closed; see FN-7 |
+| FN-7 | **⛔ Initial migration blocked on the local database password.** PostgreSQL 16 is running on port 5432, but `pg_hba.conf` requires `scram-sha-256` and the password is unknown; `postgres:postgres` returned `P1000`. **A real sign-in will fail until this is resolved** — `PrismaAdapter` cannot create the `User` row. Session/route tests are unaffected, as reading a JWT performs no query. | **High** | F-002 | Repo owner: supply a working `DATABASE_URL`, then `npx prisma migrate dev --name init` |
+| FN-8 | **⛔ Entra acceptance criteria AC-11…AC-14 remain open.** Tenant ID, client ID, client secret and a registered redirect URI are required. AC-14 (a non-tenant Microsoft account is refused) is the one that actually proves the access model. | **High** | F-002 | Repo owner / Entra admin — `environments.md` states this cannot be done by an agent |
 | FN-4 | **Azure prerequisites unconfirmed** — Entra tenant ID, app registration, subscription access, and whether the Postgres server will be privately networked (it is **not** by default). | **High** | `/init-architecture` | Blocks F-002 (auth) and F-004. Needs the repo owner / Azure admin |
 | FN-5 | **CSP allows `'unsafe-inline'` and `'unsafe-eval'` on `script-src`** — required by the Next.js dev overlay and inline bootstrap scripts. Should be tightened to a nonce-based policy once real auth and UI exist. | Low | F-001 | F-014 (security hardening review) |
 | FN-6 | **Ports 3000 and 3100 are occupied by other apps** on the development machine. The E2E suite uses 3456 with `reuseExistingServer: false`; `npm run dev` needs `-- --port` locally. Not a repo defect, but it will confuse anyone cloning onto that machine. | Low | F-001 | None — documented in `playwright.config.ts` |
