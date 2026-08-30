@@ -20,7 +20,7 @@
 |----|---------|----------|--------|--------------|--------|-----------|
 | F-001 | Project scaffolding (per architecture decisions / chosen stack) | P0 | ✅ | — | `feature/F-001` | 2026-08-28 |
 | F-002 | Authentication — Entra ID sign in / sign out (**no sign-up**) | P0 | 🔨 | F-001 | `feature/F-002` (PR #4 **merged**) | — |
-| F-003 | Access-control policies + role-aware route gate + `isActive` enforcement | P0 | 📋 | F-002 | | |
+| F-003 | Access-control policies + role-aware route gate + `isActive` enforcement | P0 | 🔨 | F-002 | `feature/F-003` | |
 | F-004 | Environment config (dev/preview/prod) | P0 | 📋 | F-001 | | |
 
 > **Technical notes from `/init-architecture`:**
@@ -49,6 +49,17 @@
 >   Marking it Done would misrepresent the state of the product. Move it to ✅ only once both
 >   findings are closed and the blocked criteria actually pass.
 > - **F-006's transition guard depends on the `Role` enum**, which now already exists.
+> - **F-003 established `src/lib/authz.ts` as the single source of authorization truth.** All rules
+>   are pure functions with **zero imports** — middleware, pages and the data layer all call them
+>   rather than deciding for themselves. **F-005 onward must reuse these helpers, not re-implement
+>   role checks.** `isPublicRoute()` was removed from `auth.config.ts` to avoid a second source.
+> - **`isActive` fails closed.** `token.isActive` requires an explicitly `true` value; anything else
+>   means inactive. **On the first real sign-in, if the adapter does not supply `isActive`, users
+>   will be refused with "account is not active"** — that is the design working, and the first thing
+>   to check when FN-7 and FN-8 clear.
+> - **`listUsers()` stays with F-011 and `listApproverOptions()` with F-005/F-006**, deliberately.
+>   They were not written in F-003 — shipping untested, unused code in a security-critical layer is
+>   worse than shipping it later with its consumer.
 
 ## Phase 2: Core Features
 > Goal: Build the primary user-facing features defined in the PRD.
@@ -151,6 +162,10 @@
 | 2026-08-28 | Env validation **rejects** a `/common` issuer rather than warning | The Auth.js provider defaults to `/common` when `issuer` is omitted, which admits any Microsoft account. It fails open and silently, so it is refused at config parse time. |
 | 2026-08-28 | A minimal `/dashboard` ships in F-002 | Route protection needs something to protect. F-010 replaces the contents; the route and its gate remain. |
 | 2026-08-28 | `@next/env` loads `.env.local` for Playwright | Playwright runs in its own process. Reuses Next's own loader rather than adding `dotenv`. |
+| 2026-08-28 | All authorization rules live in `src/lib/authz.ts` as pure functions | Same reasoning as `canTransition()` in ADR-001: duplicated rules drift, and with no RLS backstop a drifted rule is a data leak. Zero imports keeps it Edge-safe and testable without infrastructure. |
+| 2026-08-28 | `isActive` **fails closed** in the token | A missing value denies. Lockout is loud and fixed in minutes; a silent grant persists for the token's 24h life. The failure modes are not symmetric. |
+| 2026-08-28 | Wrong role → redirect to `/dashboard`; wrong record → `NOT_FOUND` | An authenticated user already knows the route exists, so hiding it gains nothing. Record existence *is* sensitive, so that case still 404s per security.md. |
+| 2026-08-28 | `isPublicRoute()` removed from `auth.config.ts` | Superseded by `routeRequirement()`. Two copies of route classification is the exact drift `authz.ts` exists to prevent. |
 | 2026-08-28 | `.gitattributes` pins `eol=lf` for all text files | `core.autocrlf=true` rewrote checkouts to CRLF; Prettier (`endOfLine: "lf"`) then failed all 20 source files. Would have passed Linux CI while failing every Windows clone. Fixed in PR #2. |
 
 ---
@@ -165,6 +180,7 @@
 | FN-2 | **No branch protection on `main`.** `docs/development/git-workflow.md` recommends four settings (require PR, require status checks, block force pushes, block deletion); none is configured, so `main` accepts direct pushes. This undercuts the "never commit directly to main" rule, which is currently honoured by convention alone. | **High** | F-001 | Repo owner, in GitHub settings. Best done *after* FN-1, since "require status checks" needs checks to exist |
 | FN-3 | ~~No database migration exists~~ — **superseded by FN-7.** The migration moved into F-002 and is now blocked on credentials rather than on scheduling. | — | F-001 | Closed; see FN-7 |
 | FN-7 | **⛔ Initial migration blocked on the local database password.** PostgreSQL 16 is running on port 5432, but `pg_hba.conf` requires `scram-sha-256` and the password is unknown; `postgres:postgres` returned `P1000`. **A real sign-in will fail until this is resolved** — `PrismaAdapter` cannot create the `User` row. Session/route tests are unaffected, as reading a JWT performs no query. | **High** | F-002 | Repo owner: supply a working `DATABASE_URL`, then `npx prisma migrate dev --name init` |
+| FN-9 | **⛔ F-003 AC-10 / AC-11 blocked by FN-7.** `src/lib/data/users.ts` is written and its `isActive` check implemented, but the **live database re-read is unverified** and there are **no denied-caller integration tests**. `overview.md` states a data-access function without one *is not done* — so by the project's own standard `users.ts` is incomplete, and "deactivation is immediate" is a claim rather than a demonstrated behaviour. Route-level gating IS proven (36 E2E tests). | **High** | F-003 | Closes with FN-7 — same `DATABASE_URL` + migration |
 | FN-8 | **⛔ Entra acceptance criteria AC-11…AC-14 remain open.** Tenant ID, client ID, client secret and a registered redirect URI are required. AC-14 (a non-tenant Microsoft account is refused) is the one that actually proves the access model. | **High** | F-002 | Repo owner / Entra admin — `environments.md` states this cannot be done by an agent |
 | FN-4 | **Azure prerequisites unconfirmed** — Entra tenant ID, app registration, subscription access, and whether the Postgres server will be privately networked (it is **not** by default). | **High** | `/init-architecture` | Blocks F-002 (auth) and F-004. Needs the repo owner / Azure admin |
 | FN-5 | **CSP allows `'unsafe-inline'` and `'unsafe-eval'` on `script-src`** — required by the Next.js dev overlay and inline bootstrap scripts. Should be tightened to a nonce-based policy once real auth and UI exist. | Low | F-001 | F-014 (security hardening review) |

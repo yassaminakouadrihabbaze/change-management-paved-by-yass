@@ -18,14 +18,16 @@
 | — | Line-ending fix | `fix/line-endings` | ✅ Merged | PR #2. Post-merge defect: lint failed on Windows checkouts. |
 | — | F-001 findings | `docs/f-001-findings` | ✅ Merged | PR #3. |
 | **F-002** | **Authentication (Entra ID)** | `feature/F-002` → PR #4 **merged** | 🔨 **Merged, not complete** | 9 of 14 criteria met. **AC-10 blocked** (FN-7, database password), **AC-11–AC-14 blocked** (FN-8, no Entra tenant). Stays 🔨 until both close. |
+| **F-003** | **Access control & `isActive`** | `feature/F-003` | 🔨 **Committed, not complete** | 9 of 11 criteria met. **AC-10, AC-11 blocked** (FN-9 → FN-7). Not pushed, no PR. |
 
-> **What works today:** lint, typecheck, **51 unit tests**, **20 E2E tests** and a clean production
-> build. Route gating, session shape, role propagation and the sign-in page are implemented and
-> genuinely verified using signed session cookies.
+> **What works today:** lint, typecheck, **149 unit tests**, **36 E2E tests** and a clean production
+> build. Route gating, role-aware access to `/admin/*`, deactivated-account refusal, session shape
+> and role propagation are implemented and genuinely verified using signed session cookies.
 >
-> ⛔ **What does not work:** nobody can actually sign in. Two independent blockers, both needing
-> the repo owner — **FN-7** (local database password → no migration → the adapter cannot create a
-> user) and **FN-8** (no Entra tenant credentials).
+> ⛔ **What does not work:** nobody can actually sign in, and nothing that touches the database is
+> proven. Three linked blockers, all needing the repo owner — **FN-7** (local database password →
+> no migration → the adapter cannot create a user), **FN-8** (no Entra tenant credentials), and
+> **FN-9** (no denied-caller integration tests for the data layer, which FN-7 gates).
 >
 > ⚠️ Still no CI and no branch protection — **FN-1** and **FN-2** in [backlog.md](backlog.md).
 
@@ -51,19 +53,29 @@
   `/dashboard`, and a session-aware `/` redirect. Verification: lint ✅, typecheck ✅, **51 unit
   tests** ✅, build ✅, **20 E2E tests** ✅. **9 of 14 acceptance criteria met.**
 
+- **F-003 (access control) — implemented, partially verified, committed.** `src/lib/authz.ts` is now
+  the single source of authorization truth: pure functions, **zero imports**, called by middleware,
+  pages and the data layer alike. `isActive` flows through the token (failing closed), `/admin/*`
+  requires ADMIN, and deactivated accounts are refused everywhere. `src/lib/data/users.ts` created.
+  Verification: lint ✅, typecheck ✅, **149 unit tests** ✅ (94 in the authz matrix), build ✅,
+  **36 E2E** ✅. **9 of 11 criteria met.**
+
 **What's next:**
 
-**First — unblock F-002. Both need you, not an agent:**
+**First — unblock F-002 and F-003. Both need you, not an agent:**
 1. **Local database password (FN-7).** Put a working `DATABASE_URL` in `.env.local`, then
    `npx prisma migrate dev --name init`. Two minutes, and it must happen before any real sign-in.
+   **This one credential also closes FN-9**, unblocking F-003's denied-caller integration tests —
+   it is the highest-leverage thing outstanding.
 2. **Entra app registration (FN-8).** Tenant ID, client ID, client secret, and redirect URI
    `{origin}/api/auth/callback/microsoft-entra-id`. Then AC-11…AC-14 can be attempted.
 
 **Then:**
-- **F-003** — narrowed again: access-control policies, role-aware route gate, `isActive`
-  enforcement. The models shipped in F-001; the migration moved into F-002.
+- **F-004** — environment config (dev/preview/prod). Also the natural home for **FN-1** (no CI) and
+  **FN-2** (no branch protection).
 - **F-005** adds the three domain tables; **F-006** delivers `canTransition()`, the keystone the
-  rest of Phase 2 depends on.
+  rest of Phase 2 depends on. **Both must reuse `src/lib/authz.ts`** rather than writing their own
+  role checks — that is the pattern F-003 exists to establish.
 
 **Open questions / blockers:**
 > Tracked formally as **Open Findings (FN-1 … FN-8)** in [backlog.md](backlog.md). The four that
@@ -85,3 +97,4 @@
 | 2026-08-28 | `/init-product` + `/init-architecture` — PRD, backlog and all architecture docs written | General change management (not ITIL/CAB); JWT sessions; in-app role column; requester picks approver; shadcn/ui; no API routes; users deactivated not deleted. See ADR-001. |
 | 2026-08-28 | **F-001 scaffolding built and verified** — app now runs, builds and tests clean | `User`/`Account`/`Role` moved into F-001 (Prisma needs ≥1 model); Prettier skips Markdown; E2E on port 3456; `vite-tsconfig-paths` dropped. |
 | 2026-08-28 | **F-002 authentication implemented** — 51 unit + 20 E2E tests pass; sign-in still blocked | Migration moved F-003→F-002 (then blocked on DB password); signed session cookies over a credentials provider; `/common` issuer rejected at config parse; minimal `/dashboard` ships now. |
+| 2026-08-28 | **F-003 access control implemented** — 149 unit + 36 E2E tests pass; data layer unproven | All rules centralised in a zero-import `authz.ts`; `isActive` fails closed; `/admin/*` gated to ADMIN; wrong-role redirects while wrong-record 404s; `listUsers`/`listApproverOptions` left with their consumers. |

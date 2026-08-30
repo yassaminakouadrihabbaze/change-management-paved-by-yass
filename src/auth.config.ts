@@ -17,14 +17,9 @@ import MicrosoftEntraID from 'next-auth/providers/microsoft-entra-id'
 /** 24 hours, per docs/architecture/security.md. */
 export const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60
 
-/** Routes reachable without a session. Everything else requires one. */
-export const PUBLIC_ROUTES = ['/signin'] as const
-
-export function isPublicRoute(pathname: string): boolean {
-  if (pathname === '/') return true
-  if (pathname.startsWith('/api/auth')) return true
-  return PUBLIC_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))
-}
+// Route classification deliberately lives in src/lib/authz.ts, not here.
+// Keeping a second copy in this file is precisely the drift that module exists
+// to prevent — see routeRequirement() and resolveRouteAccess().
 
 export const authConfig = {
   providers: [
@@ -59,11 +54,17 @@ export const authConfig = {
      */
     jwt({ token, user }) {
       if (user) {
+        const record = user as { role?: string; isActive?: boolean }
         token.id = user.id
         // `role` comes from the adapter-created User row. Falls back to the
         // least-privileged role rather than leaving it undefined — an absent
         // role must never read as "unrestricted".
-        token.role = (user as { role?: string }).role ?? 'REQUESTER'
+        token.role = record.role ?? 'REQUESTER'
+        // `isActive` FAILS CLOSED: an explicitly true value is required. If the
+        // adapter does not supply it, the user is treated as inactive and
+        // refused — a loud, immediate failure rather than a silent grant that
+        // would persist for the token's full 24h lifetime. See F-003-plan.md.
+        token.isActive = record.isActive === true
       }
       return token
     },
@@ -73,6 +74,7 @@ export const authConfig = {
       if (session.user) {
         session.user.id = (token.id as string) ?? ''
         session.user.role = (token.role as string) ?? 'REQUESTER'
+        session.user.isActive = token.isActive === true
       }
       return session
     },

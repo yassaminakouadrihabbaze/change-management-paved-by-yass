@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { SESSION_MAX_AGE_SECONDS, authConfig, isPublicRoute } from './auth.config'
+import { SESSION_MAX_AGE_SECONDS, authConfig } from './auth.config'
 
 beforeAll(() => {
   process.env.AUTH_MICROSOFT_ENTRA_ID_ID ??= 'test-client-id'
@@ -84,23 +84,58 @@ describe('session callback', () => {
   })
 })
 
-describe('route classification', () => {
-  it.each(['/signin', '/', '/api/auth/callback/microsoft-entra-id', '/api/auth/session'])(
-    'F-002 AC-1: treats %s as public',
-    (route) => {
-      expect(isPublicRoute(route)).toBe(true)
+// Route classification moved to src/lib/authz.ts in F-003 and is covered
+// exhaustively in src/lib/authz.test.ts. Keeping a copy here would recreate the
+// duplicate source of truth that module exists to eliminate.
+
+describe('isActive propagation (F-003)', () => {
+  it('F-003 AC-1: copies isActive onto the token when the user is active', async () => {
+    const token = await authConfig.callbacks.jwt({
+      token: {},
+      user: { id: 'u-1', role: 'ADMIN', isActive: true },
+    } as never)
+
+    expect(token).toMatchObject({ isActive: true })
+  })
+
+  it('F-003 AC-7: an absent isActive resolves to false, not true', async () => {
+    // Fails closed. If the adapter does not supply isActive, the user is
+    // refused rather than silently granted access for the token's 24h life.
+    const token = await authConfig.callbacks.jwt({
+      token: {},
+      user: { id: 'u-2', role: 'ADMIN' },
+    } as never)
+
+    expect(token.isActive).toBe(false)
+  })
+
+  it.each([false, null, undefined, 'true', 1, {}])(
+    'F-003 AC-7: isActive of %o resolves to false',
+    async (value) => {
+      const token = await authConfig.callbacks.jwt({
+        token: {},
+        user: { id: 'u-3', role: 'ADMIN', isActive: value },
+      } as never)
+
+      expect(token.isActive).toBe(false)
     }
   )
 
-  it.each(['/dashboard', '/requests/new', '/requests/abc-123', '/admin/users'])(
-    'F-002 AC-1: treats %s as protected',
-    (route) => {
-      expect(isPublicRoute(route)).toBe(false)
-    }
-  )
+  it('F-003 AC-1: exposes isActive on the session', async () => {
+    const session = await authConfig.callbacks.session({
+      session: { user: { email: 'someone@example.com' } },
+      token: { id: 'u-4', role: 'MANAGER', isActive: true },
+    } as never)
 
-  it('F-002 AC-1: does not treat a lookalike prefix as public', () => {
-    // '/signin-as-admin' must not inherit '/signin' being public.
-    expect(isPublicRoute('/signin-as-admin')).toBe(false)
+    expect(session.user.isActive).toBe(true)
+  })
+
+  it('F-003 AC-7: a token without isActive yields an inactive session', async () => {
+    const session = await authConfig.callbacks.session({
+      session: { user: { email: 'someone@example.com' } },
+      token: { id: 'u-5', role: 'ADMIN' },
+    } as never)
+
+    expect(session.user.isActive).toBe(false)
   })
 })
