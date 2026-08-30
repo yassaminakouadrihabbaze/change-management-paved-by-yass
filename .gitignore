@@ -42,6 +42,10 @@ next-env.d.ts
 
 # Testing
 coverage/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
 
 # Terraform (infra/) — these can contain secrets; never commit them
 **/.terraform/

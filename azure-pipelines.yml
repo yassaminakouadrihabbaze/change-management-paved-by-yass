@@ -17,7 +17,7 @@ trigger:
 variables:
   - group: next-azure-postgres-vars # ADO variable group (or link Key Vault): AZURE_SERVICE_CONNECTION, ACR_NAME, RESOURCE_GROUP, CONTAINER_APP, IMAGE_REPO
   - name: imageTag
-    value: "$(Build.BuildId)"
+    value: '$(Build.BuildId)'
 
 stages:
   - stage: Infra
@@ -65,7 +65,7 @@ stages:
         pool: { vmImage: ubuntu-latest }
         steps:
           - task: NodeTool@0
-            inputs: { versionSpec: "20.x" }
+            inputs: { versionSpec: '20.x' }
           - task: AzureCLI@2
             displayName: npx prisma migrate deploy
             inputs:

@@ -14,7 +14,11 @@
 
 | Feature ID | Feature | Branch | Status | Notes |
 |-----------|---------|--------|--------|-------|
-| — | Nothing in progress | — | — | Next up: **F-001** — run `/new-feature F-001` |
+| F-001 | Project scaffolding | `feature/F-001` | ✅ Done | All 9 acceptance criteria verified. Branch not yet pushed/merged. |
+| — | Next: **F-002** — Entra ID auth | — | 📋 | Run `/new-feature F-002` |
+
+> **The app is now real and runnable.** `npm run dev` serves a placeholder page; typecheck, lint,
+> 13 unit tests, 3 E2E tests and a standalone production build all pass.
 
 ## Last Session Summary
 
@@ -30,16 +34,21 @@
 - `README.md` rewritten as a project README; `CLAUDE.md` project name and phase filled in.
 - `tech-stack.md` — added shadcn/ui (the only stack addition; the stack itself is unchanged).
 
+- **F-001 (project scaffolding) — complete and verified.** Next.js 14 + TypeScript strict + Tailwind + shadcn/ui tokens + Prisma + Vitest + Playwright, fitted around the template's existing Dockerfile, Terraform and pipeline. Verification: typecheck ✅, lint ✅, 13 unit tests ✅, `prisma generate` ✅, standalone build ✅, 3 E2E tests ✅.
+
 **What's next:**
-- Run `/new-feature F-001` to scaffold the project (Next.js + TypeScript + Tailwind + Prisma + Docker).
-- Then F-002 (Entra ID auth — **no sign-up**, split Auth.js config, JWT sessions) and F-003 (`Role` enum, `isActive`, middleware gate).
-- F-005 creates the **entire** Prisma schema in one migration; F-006 delivers `canTransition()`, the keystone the rest of Phase 2 depends on.
+- **F-002** — Entra ID auth. **No sign-up.** Split Auth.js config (Edge-safe `auth.config.ts` for middleware, full `auth.ts` with `PrismaAdapter`), JWT sessions. Getting the split wrong is a rewrite, not a tweak.
+- **F-003** — narrowed: initial migration, `isActive` enforcement, access-control policies, middleware route/role gate. The `User`/`Account` models and `Role` enum already shipped in F-001.
+- **F-005** adds the three domain tables; **F-006** delivers `canTransition()`, the keystone the rest of Phase 2 depends on.
 
 **Open questions / blockers:**
+- **No database migration exists yet.** The schema is defined and the client generates, but `prisma migrate dev` needs a reachable database. Blocked until a connection string exists (F-004), then run in F-003.
+- **Azure prerequisites still unconfirmed** — Entra tenant ID, app registration, subscription access, and whether the Postgres server will be privately networked (it is **not** by default). Needed for F-002 and F-004. This is the most likely thing to block progress.
 - **`Category` enum values are placeholders** (`SOFTWARE`, `HARDWARE`, `PROCESS`, `POLICY`, `OTHER`) — never established during discovery. Confirm when F-005 starts.
 - **Success metrics are qualitative only.** Quantitative targets recorded as an open item in the PRD; revisit before MVP launch.
 - **Design system not defined** — `design-system.md` is still a draft. shadcn/ui was chosen as visually neutral so this can be settled later without rework. Run `/init-design-system` any time.
-- **Azure prerequisites not yet confirmed** — Entra tenant ID, subscription access, and whether the Postgres server will be privately networked (it is not by default). Needed for F-001/F-004.
+- **Other apps occupy ports 3000 and 3100** on this machine. The E2E suite uses 3456 (`E2E_PORT` to override); `npm run dev` will need `-- --port` too.
+- **`feature/F-001` is committed but not pushed.** No PR yet.
 
 ## Session History
 
@@ -48,3 +57,4 @@
 | Date | Summary | Key Decisions |
 |------|---------|---------------|
 | 2026-08-28 | `/init-product` + `/init-architecture` — PRD, backlog and all architecture docs written | General change management (not ITIL/CAB); JWT sessions; in-app role column; requester picks approver; shadcn/ui; no API routes; users deactivated not deleted. See ADR-001. |
+| 2026-08-28 | **F-001 scaffolding built and verified** — app now runs, builds and tests clean | `User`/`Account`/`Role` moved into F-001 (Prisma needs ≥1 model); Prettier skips Markdown; E2E on port 3456; `vite-tsconfig-paths` dropped. |

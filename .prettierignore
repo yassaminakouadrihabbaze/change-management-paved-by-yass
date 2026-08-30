@@ -1,0 +1,14 @@
+node_modules
+.next
+build
+dist
+coverage
+playwright-report
+test-results
+package-lock.json
+infra/.terraform
+
+# Markdown is hand-authored (architecture docs, ADRs, feature plans) with
+# deliberate table alignment and line wrapping. Prettier reflows it into a large
+# diff and fights manual edits, so formatting is not enforced on prose.
+*.md
