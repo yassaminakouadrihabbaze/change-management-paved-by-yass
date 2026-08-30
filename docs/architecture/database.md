@@ -261,7 +261,16 @@ gives the requester a visible "this needs your attention" state on the dashboard
 
 | Migration | Description | Date |
 |-----------|-------------|------|
-| (prisma) initial | User, Account, ChangeRequest, Comment, StatusHistory + enums | TBD — created in F-005 |
+| — (schema only, not yet migrated) | `User`, `Account`, `Role` defined in `schema.prisma` | 2026-08-28 (F-001) |
+| (prisma) initial | Applies `User`, `Account`, `Role` to the database | TBD — F-003 |
+| (prisma) domain tables | `ChangeRequest`, `Comment`, `StatusHistory` + `ChangeStatus`, `Priority`, `Category` | TBD — F-005 |
+
+> **Why the identity models exist before any migration:** Prisma refuses to generate a client when
+> no models are defined, and the shipped `Dockerfile` runs `npx prisma generate` — so a
+> datasource-only schema would have broken the container build. `User`, `Account` and `Role` were
+> therefore written during F-001 (scaffolding), exactly as specified above. `prisma migrate dev`
+> needs a reachable database, which does not exist until F-004, so **`prisma/migrations/` is
+> deliberately absent** until F-003 applies the first one.
 
 ## Notes on Azure PostgreSQL Flexible Server
 
