@@ -1,0 +1,22 @@
+# Normalize line endings.
+#
+# LF is stored in the repository AND checked out into the working tree on every
+# platform. Without this, Git's core.autocrlf=true (the Windows default) rewrites
+# checkouts to CRLF, and Prettier — which defaults to endOfLine: "lf" — then fails
+# every source file. That made `npm run lint` fail on a fresh Windows clone while
+# passing on Linux CI.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF or they will not run.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touch binaries.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
