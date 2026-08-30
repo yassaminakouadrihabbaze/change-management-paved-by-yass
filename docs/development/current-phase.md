@@ -19,17 +19,22 @@
 | — | F-001 findings | `docs/f-001-findings` | ✅ Merged | PR #3. |
 | **F-002** | **Authentication (Entra ID)** | `feature/F-002` → PR #4 **merged** | 🔨 **Merged, not complete** | 9 of 14 criteria met. **AC-10 blocked** (FN-7, database password), **AC-11–AC-14 blocked** (FN-8, no Entra tenant). Stays 🔨 until both close. |
 | **F-003** | **Access control & `isActive`** | `feature/F-003` → PR #6 | 🔨 **Merged, not complete** | 9 of 11 criteria met. **AC-10, AC-11 blocked** (FN-9 → FN-7). Stays 🔨 until the data layer is proven. |
+| **F-004** | **Environment config + CI** | `feature/F-004` → PR #8 | ✅ **Merged** | **Closes FN-1** — CI green on first run (verify 72s, e2e 94s). Terraform parameterised but **not applied**. Branch protection ready to enable — see environments.md. |
 
-> **What works today:** lint, typecheck, **149 unit tests**, **36 E2E tests** and a clean production
-> build. Route gating, role-aware access to `/admin/*`, deactivated-account refusal, session shape
-> and role propagation are implemented and genuinely verified using signed session cookies.
+> **What works today:** lint, typecheck, **173 unit tests**, **36 E2E tests** and a clean production
+> build — now verified **automatically on every pull request** by GitHub Actions, not just on one
+> developer's machine. Route gating, role-aware access to `/admin/*`, deactivated-account refusal,
+> session shape and role propagation are implemented and genuinely verified using signed session
+> cookies.
 >
 > ⛔ **What does not work:** nobody can actually sign in, and nothing that touches the database is
 > proven. Three linked blockers, all needing the repo owner — **FN-7** (local database password →
 > no migration → the adapter cannot create a user), **FN-8** (no Entra tenant credentials), and
 > **FN-9** (no denied-caller integration tests for the data layer, which FN-7 gates).
 >
-> ⚠️ Still no CI and no branch protection — **FN-1** and **FN-2** in [backlog.md](backlog.md).
+> ⚠️ **Branch protection is still off** (**FN-2**) — `main` accepts direct pushes. Status checks now
+> exist, so it can finally be enabled; recommended settings are at the end of
+> [environments.md](environments.md).
 
 ## Last Session Summary
 
@@ -60,6 +65,13 @@
   Verification: lint ✅, typecheck ✅, **149 unit tests** ✅ (94 in the authz matrix), build ✅,
   **36 E2E** ✅. **9 of 11 criteria met.**
 
+- **F-004 (environment config + CI) — complete and merged.** GitHub Actions now verifies every
+  pull request (lint, typecheck, unit tests, build, E2E) with **no repository secrets**, closing
+  **FN-1**. A `Verify` stage was added to `azure-pipelines.yml`, which previously ran no tests at
+  all. Runtime env validation extended beyond auth; Terraform parameterised per environment but
+  **not applied**. Verification: lint ✅, typecheck ✅, **173 unit tests** ✅, build ✅, **36 E2E** ✅,
+  **CI green on first run**.
+
 **What's next:**
 
 **First — unblock F-002 and F-003. Both need you, not an agent:**
@@ -70,17 +82,19 @@
 2. **Entra app registration (FN-8).** Tenant ID, client ID, client secret, and redirect URI
    `{origin}/api/auth/callback/microsoft-entra-id`. Then AC-11…AC-14 can be attempted.
 
+3. **Enable branch protection (FN-2).** Now unblocked — CI produces the status checks it requires.
+   Settings are listed at the end of [environments.md](environments.md).
+
 **Then:**
-- **F-004** — environment config (dev/preview/prod). Also the natural home for **FN-1** (no CI) and
-  **FN-2** (no branch protection).
 - **F-005** adds the three domain tables; **F-006** delivers `canTransition()`, the keystone the
   rest of Phase 2 depends on. **Both must reuse `src/lib/authz.ts`** rather than writing their own
   role checks — that is the pattern F-003 exists to establish.
 
 **Open questions / blockers:**
-> Tracked formally as **Open Findings (FN-1 … FN-8)** in [backlog.md](backlog.md). The four that
-> matter: **FN-7** and **FN-8** block sign-in entirely; **FN-1** (no CI) and **FN-2** (no branch
-> protection) mean nothing but local discipline protects the trunk.
+> Tracked formally as **Open Findings (FN-1 … FN-10)** in [backlog.md](backlog.md). **FN-1 is now
+> resolved.** The ones that matter: **FN-7**, **FN-8** and **FN-9** block sign-in and the data layer
+> entirely; **FN-2** (branch protection) is ready to enable; **FN-10** must be fixed before any
+> production apply.
 
 - **`Category` enum values are placeholders** (`SOFTWARE`, `HARDWARE`, `PROCESS`, `POLICY`, `OTHER`) — never established during discovery. Confirm when F-005 starts.
 - **Success metrics are qualitative only.** Quantitative targets recorded as an open item in the PRD; revisit before MVP launch.
@@ -97,4 +111,5 @@
 | 2026-08-28 | `/init-product` + `/init-architecture` — PRD, backlog and all architecture docs written | General change management (not ITIL/CAB); JWT sessions; in-app role column; requester picks approver; shadcn/ui; no API routes; users deactivated not deleted. See ADR-001. |
 | 2026-08-28 | **F-001 scaffolding built and verified** — app now runs, builds and tests clean | `User`/`Account`/`Role` moved into F-001 (Prisma needs ≥1 model); Prettier skips Markdown; E2E on port 3456; `vite-tsconfig-paths` dropped. |
 | 2026-08-28 | **F-002 authentication implemented** — 51 unit + 20 E2E tests pass; sign-in still blocked | Migration moved F-003→F-002 (then blocked on DB password); signed session cookies over a credentials provider; `/common` issuer rejected at config parse; minimal `/dashboard` ships now. |
+| 2026-08-28 | **F-004 CI + environment config merged** — first automated verification in the project | GitHub Actions verifies PRs, Azure DevOps deploys (ADR-002); CI requires no secrets; `Verify` stage gates the pipeline; one Terraform state per environment; FN-10 raised (prod DB publicly reachable). |
 | 2026-08-28 | **F-003 access control implemented** — 149 unit + 36 E2E tests pass; data layer unproven | All rules centralised in a zero-import `authz.ts`; `isActive` fails closed; `/admin/*` gated to ADMIN; wrong-role redirects while wrong-record 404s; `listUsers`/`listApproverOptions` left with their consumers. |

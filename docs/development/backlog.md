@@ -21,7 +21,7 @@
 | F-001 | Project scaffolding (per architecture decisions / chosen stack) | P0 | ✅ | — | `feature/F-001` | 2026-08-28 |
 | F-002 | Authentication — Entra ID sign in / sign out (**no sign-up**) | P0 | 🔨 | F-001 | `feature/F-002` (PR #4 **merged**) | — |
 | F-003 | Access-control policies + role-aware route gate + `isActive` enforcement | P0 | 🔨 | F-002 | `feature/F-003` (PR #6 **merged**) | — |
-| F-004 | Environment config (dev/preview/prod) | P0 | 📋 | F-001 | | |
+| F-004 | Environment config (dev/preview/prod) + CI | P0 | 🔨 | F-001 | `feature/F-004` | |
 
 > **Technical notes from `/init-architecture`:**
 > - **F-002 has no sign-up step.** Single-tenant Entra ID provisions users just-in-time from the org
@@ -166,6 +166,11 @@
 | 2026-08-28 | `isActive` **fails closed** in the token | A missing value denies. Lockout is loud and fixed in minutes; a silent grant persists for the token's 24h life. The failure modes are not symmetric. |
 | 2026-08-28 | Wrong role → redirect to `/dashboard`; wrong record → `NOT_FOUND` | An authenticated user already knows the route exists, so hiding it gains nothing. Record existence *is* sensitive, so that case still 404s per security.md. |
 | 2026-08-28 | `isPublicRoute()` removed from `auth.config.ts` | Superseded by `routeRequirement()`. Two copies of route classification is the exact drift `authz.ts` exists to prevent. |
+| 2026-08-28 | GitHub Actions verifies PRs; Azure DevOps deploys | ADO needs a bootstrap an agent cannot perform, and its pipeline ran no tests at all. GHA needs nothing external and works today. See ADR-002. |
+| 2026-08-28 | `Verify` stage added to `azure-pipelines.yml`, gating all others | The pipeline would otherwise deploy to production without running a single test. Deliberate redundancy with CI: GHA guards the merge, ADO guards the deploy. |
+| 2026-08-28 | CI must require **no repository secrets** | A constraint, not an accident — the moment CI needs a credential it inherits the provisioning blocker it exists to route around. |
+| 2026-08-28 | One Terraform state file per environment | Sharing state means an apply aimed at preview plans to destroy production. `-reconfigure` is mandatory when switching. |
+| 2026-08-28 | `currentEnvironment()` defaults to `production` when config is unreadable | Guessing "development" is how debug output reaches real users. Assume the strictest setting. |
 | 2026-08-28 | `.gitattributes` pins `eol=lf` for all text files | `core.autocrlf=true` rewrote checkouts to CRLF; Prettier (`endOfLine: "lf"`) then failed all 20 source files. Would have passed Linux CI while failing every Windows clone. Fixed in PR #2. |
 
 ---
@@ -176,7 +181,8 @@
 
 | # | Finding | Severity | Raised | Owner / next step |
 |---|---------|----------|--------|-------------------|
-| FN-1 | **No CI runs on pull requests.** Zero check runs on PR #1 and PR #2. `azure-pipelines.yml` targets Azure DevOps, which is not connected to this GitHub repo — it needs an ADO project, a service connection, and the `next-azure-postgres-vars` variable group. Until then, the only verification is whatever a developer runs locally. | **High** | F-001 | F-004 (environment config), or add a GitHub Actions workflow running lint/typecheck/test/build |
+| FN-1 | ~~No CI runs on pull requests~~ — **RESOLVED in F-004.** GitHub Actions now verifies every PR (lint, typecheck, unit tests, build, E2E) with no secrets required. A `Verify` stage was also added to `azure-pipelines.yml`, which previously ran **no tests at all** and would have deployed to production without executing the suite. Original text: Zero check runs on PR #1 and PR #2. `azure-pipelines.yml` targets Azure DevOps, which is not connected to this GitHub repo — it needs an ADO project, a service connection, and the `next-azure-postgres-vars` variable group. Until then, the only verification is whatever a developer runs locally. | **High** | F-001 | F-004 (environment config), or add a GitHub Actions workflow running lint/typecheck/test/build |
+| FN-10 | **⛔ Production would be publicly reachable.** `postgres_public_network_access_enabled` defaults to `true` and `envs/prod.tfvars.example` keeps it so. `security.md` recommends VNet integration with a private endpoint, but the Terraform skeleton does not provision the VNet that turning it off requires — flipping the flag alone makes the database unreachable, including by the migration step. Not a live risk (nothing is provisioned), but it must not reach production as-is. | **High** | F-004 | Add VNet + private endpoint to `infra/main.tf` before the first production apply |
 | FN-2 | **No branch protection on `main`.** `docs/development/git-workflow.md` recommends four settings (require PR, require status checks, block force pushes, block deletion); none is configured, so `main` accepts direct pushes. This undercuts the "never commit directly to main" rule, which is currently honoured by convention alone. | **High** | F-001 | Repo owner, in GitHub settings. Best done *after* FN-1, since "require status checks" needs checks to exist |
 | FN-3 | ~~No database migration exists~~ — **superseded by FN-7.** The migration moved into F-002 and is now blocked on credentials rather than on scheduling. | — | F-001 | Closed; see FN-7 |
 | FN-7 | **⛔ Initial migration blocked on the local database password.** PostgreSQL 16 is running on port 5432, but `pg_hba.conf` requires `scram-sha-256` and the password is unknown; `postgres:postgres` returned `P1000`. **A real sign-in will fail until this is resolved** — `PrismaAdapter` cannot create the `User` row. Session/route tests are unaffected, as reading a JWT performs no query. | **High** | F-002 | Repo owner: supply a working `DATABASE_URL`, then `npx prisma migrate dev --name init` |

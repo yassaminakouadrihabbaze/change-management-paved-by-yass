@@ -1,0 +1,28 @@
+# Preview environment — copy to preview.tfvars (gitignored) or pass via TF_VAR_*.
+# NEVER commit real secrets.
+#
+# Apply with per-environment state so this cannot touch production:
+#   terraform init -reconfigure -backend-config="key=change-mgmt-preview.tfstate"
+#   terraform apply -var-file=envs/preview.tfvars
+
+name_prefix = "changemgmt"
+location    = "eastus"
+environment = "preview"
+
+# Smallest viable sizing — preview carries no real load and should not carry a
+# production bill.
+postgres_sku_name   = "B_Standard_B1ms"
+postgres_storage_mb = 32768
+acr_sku             = "Basic"
+container_cpu       = 0.5
+container_memory    = "1Gi"
+
+# Preview is reachable from developer machines, so public access stays on. It
+# must therefore never hold real personal data — see environments.md.
+postgres_public_network_access_enabled = true
+
+postgres_admin_login = "pgadmin"
+# export TF_VAR_postgres_admin_password=... — do not put a real password here.
+postgres_admin_password = "set-via-env-or-untracked-tfvars"
+
+entra_tenant_id = "your-entra-tenant-id"

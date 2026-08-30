@@ -23,14 +23,46 @@
 
 ## Environments
 
-| Environment | Purpose | Database | Runs at |
-|-------------|---------|----------|---------|
-| **Local** | Development & debugging | Local Postgres or a dev Flexible Server | localhost:3000 |
-| **Preview** | QA / demos | Preview Flexible Server | ACA preview revision/app |
-| **Production** | Live users | Production Flexible Server | ACA production app |
+| Environment | Purpose | Database | Runs at | Provisioned? |
+|-------------|---------|----------|---------|--------------|
+| **Local** | Development & debugging | Local Postgres or a dev Flexible Server | localhost | ✅ Postgres 16 installed; ⛔ no migration yet (FN-7) |
+| **Preview** | QA / demos | Preview Flexible Server | ACA preview revision/app | ⛔ Not provisioned |
+| **Production** | Live users | Production Flexible Server | ACA production app | ⛔ Not provisioned |
 
-> For an MVP you may start with just **Local + Production** and add Preview later. The Terraform
-> skeleton provisions one environment; parameterize it (workspaces or `*.tfvars` per env) to add more.
+> For an MVP you may start with just **Local + Production** and add Preview later.
+> Terraform is parameterised per environment as of F-004 — see
+> [`../../infra/README.md`](../../infra/README.md) for the state-key and tfvars workflow. **Nothing
+> has been applied**; both cloud environments exist as configuration only.
+
+> **Local ports:** other applications on the current development machine occupy 3000 and 3100. The
+> E2E suite uses **3456** (`E2E_PORT` overrides), and `npm run dev -- --port 3456` matches the
+> `AUTH_URL` in `.env.local`.
+
+## Continuous Integration (F-004)
+
+Two systems, doing different jobs. See
+[ADR-002](../architecture/decisions/002-ci-with-github-actions.md).
+
+| | GitHub Actions | Azure DevOps |
+|---|---|---|
+| **Owns** | Verification | Deployment |
+| **Runs** | lint, typecheck, unit tests, build, E2E | Terraform → image → migrate → deploy |
+| **Triggers on** | Every PR to `main`, and pushes to `main` | Merge to `main` |
+| **Needs** | Nothing — no secrets, no subscription | ADO project, service connection, variable group |
+| **Status** | ✅ Active | ⛔ Not connected |
+
+`azure-pipelines.yml` also gained a **`Verify` stage** that all other stages depend on, so once it is
+connected a failing test cannot deploy. Previously the pipeline ran no tests at all — it would have
+released to production without executing the suite.
+
+> **What CI does *not* prove.** It verifies what the test suite covers. The database-backed data
+> layer is still untested (FN-9) and real Entra sign-in is still unverified (FN-8). **A green CI run
+> does not mean the application works end to end.**
+
+### Branch protection
+
+Not yet enabled. `main` currently accepts direct pushes (FN-2). Recommended settings, now that
+status checks exist, are listed at the end of this document.
 
 ## Phase 0 — Bootstrap (dev-led, once)
 
@@ -123,3 +155,25 @@ firewall/VNet rules allow the client.
 rights on the subscription and ACR.
 **"Migrations didn't run"** → the pipeline runs `prisma migrate deploy` before deploy; check that
 stage's logs and that `DATABASE_URL` is resolved from Key Vault.
+
+---
+
+## Recommended branch protection for `main`
+
+Not yet enabled — deliberately left until CI existed, because "require status checks to pass" is
+meaningless without checks to require. Now that `.github/workflows/ci.yml` produces them, these are
+the settings to apply (Settings → Branches → Add rule, or via the API):
+
+| Setting | Recommended | Why |
+|---------|-------------|-----|
+| Require a pull request before merging | **On** | Makes `.claude/rules/git-workflow.md` rule 1 enforced rather than honoured by convention |
+| Required approvals | **0** for a solo project | A self-approval requirement blocks a single maintainer entirely. Raise to 1 as soon as there is a second contributor |
+| Require status checks to pass | **On** — `Lint, types, unit tests, build` and `End-to-end tests` | The whole point of F-004's CI |
+| Require branches to be up to date before merging | **On** | Prevents a PR that passed against stale `main` from merging a semantic conflict |
+| Require conversation resolution | **On** | Cheap; stops review comments being merged past |
+| Block force pushes | **On** | `git-workflow.md` recommends it; force-push to `main` destroys history |
+| Block deletions | **On** | Same reasoning |
+| Include administrators | **Consider** | Strictest, but a solo owner can lock themselves out of an urgent hotfix. Leaving it off is defensible while the team is one person — decide deliberately rather than by default |
+
+**Do not enable "Require status checks" until at least one CI run has completed on `main`** — GitHub
+only offers checks it has actually observed, so the names will not appear in the picker before then.
