@@ -23,13 +23,20 @@
 | **Registry** | Azure Container Registry (ACR) | — | Stores the built image the pipeline deploys | Low |
 | **Secrets** | Azure Key Vault | — | Runtime secrets, referenced by ACA via managed identity | Low |
 | **IaC** | Terraform (`azurerm` + `azuread`) | `~> 4` / `~> 3` | Provisions all Azure + Entra resources | Medium |
-| **CI/CD** | Azure DevOps Pipelines | — | Build → push to ACR → migrate → deploy, on merge to `main` (GitHub) | Medium |
+| **CD (deploy)** | Azure DevOps Pipelines | — | Verify → build → push to ACR → migrate → deploy, on merge to `main` (GitHub) | Medium |
+| **CI (verify)** | GitHub Actions | — | Lint, typecheck, unit tests, build, E2E on every pull request. **No secrets required** | Low |
 | **Styling** | Tailwind CSS | 3+ | Utility-first CSS framework | Low |
 | **UI primitives** | shadcn/ui (Radix + Tailwind) | Latest | Accessible table, dialog, select, form primitives — **copied into `src/components/ui/`, not a locked dependency** | Low (the code is ours) |
 | **Testing (unit)** | Vitest | Latest | Fast unit/integration tests | Low |
 | **Testing (e2e)** | Playwright | Latest | Browser-based end-to-end tests | Low |
 | **Validation** | Zod | Latest | Runtime validation for forms and inputs | Low |
 | **Linting** | ESLint + Prettier | Latest | Code style and formatting | Low |
+
+> **Two CI/CD systems, deliberately.** GitHub Actions *verifies* every pull request; Azure DevOps
+> *deploys* on merge to `main`. They guard different moments and the GitHub side needs no
+> subscription, service connection or secrets — so it works before the Azure bootstrap is done.
+> Both invoke the same npm scripts, which is what keeps the two definitions from drifting. See
+> [ADR-002](decisions/002-ci-with-github-actions.md).
 
 > **shadcn/ui is not a runtime dependency.** Its CLI copies component source into
 > `src/components/ui/`, which you then own and edit. What *is* a dependency is the set of Radix

@@ -18,7 +18,7 @@ resource "azurerm_container_registry" "acr" {
   name                = lower(replace("${local.base}acr", "-", ""))
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  sku                 = "Basic"
+  sku                 = var.acr_sku
   admin_enabled       = false # use managed identity, not admin creds
 }
 
@@ -43,9 +43,9 @@ resource "azurerm_postgresql_flexible_server" "db" {
   version                       = "16"
   administrator_login           = var.postgres_admin_login
   administrator_password        = var.postgres_admin_password
-  storage_mb                    = 32768
-  sku_name                      = "B_Standard_B1ms" # smallest burstable; size up for prod
-  public_network_access_enabled = true              # TODO: prefer VNet integration + private access
+  storage_mb                    = var.postgres_storage_mb
+  sku_name                      = var.postgres_sku_name
+  public_network_access_enabled = var.postgres_public_network_access_enabled
   zone                          = "1"
 }
 
@@ -113,8 +113,8 @@ resource "azurerm_container_app" "app" {
     container {
       name   = "web"
       image  = var.app_image
-      cpu    = 0.5
-      memory = "1Gi"
+      cpu    = var.container_cpu
+      memory = var.container_memory
       # Wire DATABASE_URL / AUTH_SECRET / Entra secret as Key Vault references (secret blocks +
       # env vars). Left out of the skeleton because secrets are seeded during bootstrap.
     }

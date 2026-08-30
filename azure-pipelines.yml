@@ -20,8 +20,51 @@ variables:
     value: '$(Build.BuildId)'
 
 stages:
+  # Runs FIRST and gates everything below it. Without this stage the pipeline
+  # would provision infrastructure and deploy to production without a single
+  # test having run — it triggers only on merge to main, so nothing else stands
+  # between a merge and a release.
+  #
+  # Pull requests are verified separately by GitHub Actions (.github/workflows/ci.yml).
+  # The two guard different moments: GitHub Actions guards the merge, this guards
+  # the deploy. Hotfixes, reverts and manual runs reach here without passing
+  # through a PR, so a merge gate is not a substitute. See ADR-002.
+  #
+  # Both invoke the same npm scripts rather than reimplementing the commands —
+  # the scripts are the shared contract that keeps the two definitions in step.
+  - stage: Verify
+    displayName: Verify (lint, types, tests, build)
+    jobs:
+      - job: verify
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - task: NodeTool@0
+            displayName: Use Node 20
+            inputs: { versionSpec: '20.x' }
+          - script: npm ci
+            displayName: Install dependencies
+          - script: npx prisma generate
+            displayName: Generate Prisma client
+            env:
+              # Not a real connection — `prisma generate` only needs the
+              # datasource block to parse. Nothing connects during this stage.
+              DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+          - script: npm run lint
+            displayName: Lint
+          - script: npm run typecheck
+            displayName: Typecheck
+          - script: npm run test
+            displayName: Unit tests
+            env:
+              DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+          - script: npm run build
+            displayName: Build
+            env:
+              DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+
   - stage: Infra
     displayName: Terraform (provision/update)
+    dependsOn: Verify
     jobs:
       - job: terraform
         pool: { vmImage: ubuntu-latest }

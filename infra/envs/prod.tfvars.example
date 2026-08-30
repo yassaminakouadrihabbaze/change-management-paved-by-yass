@@ -1,0 +1,29 @@
+# Production environment — copy to prod.tfvars (gitignored) or pass via TF_VAR_*.
+# NEVER commit real secrets.
+#
+# Apply with per-environment state:
+#   terraform init -reconfigure -backend-config="key=change-mgmt-prod.tfstate"
+#   terraform apply -var-file=envs/prod.tfvars
+
+name_prefix = "changemgmt"
+location    = "eastus"
+environment = "prod"
+
+# Sized above preview. Review against real load before launch — these are a
+# starting point, not a recommendation.
+postgres_sku_name   = "GP_Standard_D2s_v3"
+postgres_storage_mb = 65536
+acr_sku             = "Standard"
+container_cpu       = 1.0
+container_memory    = "2Gi"
+
+# ⚠️ Production SHOULD be false, with VNet integration and a private endpoint.
+# It is left true here only because the skeleton does not yet provision the VNet
+# that turning it off requires — flipping this without that networking in place
+# makes the database unreachable, including by the migration step. See FN-10.
+postgres_public_network_access_enabled = true
+
+postgres_admin_login = "pgadmin"
+postgres_admin_password = "set-via-env-or-untracked-tfvars"
+
+entra_tenant_id = "your-entra-tenant-id"

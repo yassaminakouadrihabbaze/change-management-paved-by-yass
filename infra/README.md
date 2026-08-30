@@ -44,9 +44,44 @@ terraform init
 ```bash
 # After remote state exists and you are `az login`'d to the right subscription:
 export TF_VAR_postgres_admin_password='<a-strong-password>'
-terraform plan
-terraform apply
+
+# Point at the environment's own state file, then apply its own variables.
+terraform init -reconfigure -backend-config="key=change-mgmt-prod.tfstate"
+terraform plan  -var-file=envs/prod.tfvars
+terraform apply -var-file=envs/prod.tfvars
 ```
+
+## Multiple environments
+
+Each environment gets **its own state file and its own tfvars**. Resource names
+already include the environment (`local.base = "${var.name_prefix}-${var.environment}"`),
+so the two can coexist in one subscription.
+
+| Environment | State key | Variables |
+|-------------|-----------|-----------|
+| Preview | `change-mgmt-preview.tfstate` | `envs/preview.tfvars` |
+| Production | `change-mgmt-prod.tfstate` | `envs/prod.tfvars` |
+
+```bash
+terraform init -reconfigure -backend-config="key=change-mgmt-preview.tfstate"
+terraform apply -var-file=envs/preview.tfvars
+```
+
+> ⚠️ **`-reconfigure` is not optional.** Without it Terraform reuses the cached
+> backend settings from the last `init` and keeps writing to the previous
+> environment's state — while the `-var-file` says otherwise. That combination
+> plans to destroy the other environment's resources.
+
+Sizing that differs between environments (`postgres_sku_name`, `container_cpu`,
+`acr_sku` and so on) lives in `variables.tf`, with defaults matching the original
+hard-coded values. Copy `envs/*.tfvars.example` to `envs/*.tfvars` — the real
+files are gitignored.
+
+> **These files have not been validated.** `terraform` is not installed in the
+> development environment and applying is out of scope for F-004, so the
+> parameterisation is mechanical (literals replaced by variables whose defaults
+> are those same literals). **Run `terraform validate` and review a `plan`
+> before your first apply.**
 
 Then, as an operator:
 1. **Seed Key Vault** with `DATABASE_URL` (built from the Postgres outputs, `sslmode=require`),

@@ -1,0 +1,115 @@
+name: CI
+
+# Verification only. Deployment is Azure DevOps' job — see azure-pipelines.yml
+# and docs/architecture/decisions/002-ci-with-github-actions.md.
+#
+# This workflow deliberately requires NO repository secrets. The moment it needs
+# a credential it inherits the provisioning blocker it exists to route around.
+# The dummy values below are generated or obviously fake, and never reach a real
+# service: no test connects to a database or to Microsoft Entra ID.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A newer push to the same PR makes the older run irrelevant.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Node 20 matches .nvmrc and the node:20-alpine base image in the Dockerfile.
+  # Verifying on a different major than we ship would defeat the point.
+  NODE_VERSION: '20'
+
+jobs:
+  verify:
+    name: Lint, types, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        # Required before typecheck and build: @prisma/client's types are
+        # generated, so without this the compiler sees a stub and fails.
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Independent of `verify` so both report in parallel — a lint failure should
+    # not hide an E2E failure, and vice versa.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate a throwaway AUTH_SECRET
+        # Authenticated E2E tests mint session cookies signed with this, and the
+        # dev server must verify them with the same value — so it is generated
+        # once per run and shared through the job environment. It is not a
+        # secret: no real identity provider is involved.
+        run: echo "AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: Run Playwright tests
+        run: npx playwright test
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
