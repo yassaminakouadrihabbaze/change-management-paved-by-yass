@@ -14,11 +14,16 @@
 
 | Feature ID | Feature | Branch | Status | Notes |
 |-----------|---------|--------|--------|-------|
-| F-001 | Project scaffolding | `feature/F-001` | ✅ Done | All 9 acceptance criteria verified. Branch not yet pushed/merged. |
+| F-001 | Project scaffolding | `feature/F-001` | ✅ Merged | PR #1 merged to `main`. All 9 acceptance criteria verified. |
+| — | Line-ending fix | `fix/line-endings` | ✅ Merged | PR #2. Post-merge defect: lint failed on Windows checkouts. |
 | — | Next: **F-002** — Entra ID auth | — | 📋 | Run `/new-feature F-002` |
 
-> **The app is now real and runnable.** `npm run dev` serves a placeholder page; typecheck, lint,
-> 13 unit tests, 3 E2E tests and a standalone production build all pass.
+> **The app is now real and runnable, and `main` is green.** `npm run dev` serves a placeholder
+> page; lint, typecheck, 13 unit tests, 3 E2E tests and a standalone production build all pass
+> from a clean checkout of `main`.
+>
+> ⚠️ **Nothing verifies this automatically.** There is no CI on pull requests and no branch
+> protection on `main` — see **Open Findings FN-1 and FN-2** in [backlog.md](backlog.md).
 
 ## Last Session Summary
 
@@ -42,6 +47,10 @@
 - **F-005** adds the three domain tables; **F-006** delivers `canTransition()`, the keystone the rest of Phase 2 depends on.
 
 **Open questions / blockers:**
+> Tracked formally as **Open Findings (FN-1 … FN-6)** in [backlog.md](backlog.md). The two that
+> matter most: **no CI runs on PRs** (FN-1) and **no branch protection on `main`** (FN-2) — so
+> nothing but local discipline is currently protecting the trunk.
+
 - **No database migration exists yet.** The schema is defined and the client generates, but `prisma migrate dev` needs a reachable database. Blocked until a connection string exists (F-004), then run in F-003.
 - **Azure prerequisites still unconfirmed** — Entra tenant ID, app registration, subscription access, and whether the Postgres server will be privately networked (it is **not** by default). Needed for F-002 and F-004. This is the most likely thing to block progress.
 - **`Category` enum values are placeholders** (`SOFTWARE`, `HARDWARE`, `PROCESS`, `POLICY`, `OTHER`) — never established during discovery. Confirm when F-005 starts.
