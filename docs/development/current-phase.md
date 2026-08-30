@@ -19,7 +19,7 @@
 | — | F-001 findings | `docs/f-001-findings` | ✅ Merged | PR #3. |
 | **F-002** | **Authentication (Entra ID)** | `feature/F-002` → PR #4 **merged** | 🔨 **Merged, not complete** | 9 of 14 criteria met. **AC-10 blocked** (FN-7, database password), **AC-11–AC-14 blocked** (FN-8, no Entra tenant). Stays 🔨 until both close. |
 | **F-003** | **Access control & `isActive`** | `feature/F-003` → PR #6 | 🔨 **Merged, not complete** | 9 of 11 criteria met. **AC-10, AC-11 blocked** (FN-9 → FN-7). Stays 🔨 until the data layer is proven. |
-| **F-004** | **Environment config + CI** | `feature/F-004` | 🔨 **In progress** | **Closes FN-1** — GitHub Actions verifies every PR. Terraform parameterised but **not applied**. Branch protection deferred pending a green CI run. |
+| **F-004** | **Environment config + CI** | `feature/F-004` → PR #8 | ✅ **Merged** | **Closes FN-1** — CI green on first run (verify 72s, e2e 94s). Terraform parameterised but **not applied**. Branch protection ready to enable — see environments.md. |
 
 > **What works today:** lint, typecheck, **149 unit tests**, **36 E2E tests** and a clean production
 > build. Route gating, role-aware access to `/admin/*`, deactivated-account refusal, session shape
