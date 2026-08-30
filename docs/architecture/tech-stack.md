@@ -25,10 +25,19 @@
 | **IaC** | Terraform (`azurerm` + `azuread`) | `~> 4` / `~> 3` | Provisions all Azure + Entra resources | Medium |
 | **CI/CD** | Azure DevOps Pipelines | — | Build → push to ACR → migrate → deploy, on merge to `main` (GitHub) | Medium |
 | **Styling** | Tailwind CSS | 3+ | Utility-first CSS framework | Low |
+| **UI primitives** | shadcn/ui (Radix + Tailwind) | Latest | Accessible table, dialog, select, form primitives — **copied into `src/components/ui/`, not a locked dependency** | Low (the code is ours) |
 | **Testing (unit)** | Vitest | Latest | Fast unit/integration tests | Low |
 | **Testing (e2e)** | Playwright | Latest | Browser-based end-to-end tests | Low |
 | **Validation** | Zod | Latest | Runtime validation for forms and inputs | Low |
 | **Linting** | ESLint + Prettier | Latest | Code style and formatting | Low |
+
+> **shadcn/ui is not a runtime dependency.** Its CLI copies component source into
+> `src/components/ui/`, which you then own and edit. What *is* a dependency is the set of Radix
+> primitives those components import (`@radix-ui/react-*`), plus `class-variance-authority`,
+> `clsx` and `tailwind-merge`. Chosen because this product is a data-dense dashboard — accessible
+> table, dialog, select and combobox behaviour is most of the UI, and it is easy to get subtly
+> wrong by hand. Visually neutral, so it restyles cleanly once `docs/product/design-system.md` is
+> filled in. See [ADR-001](decisions/001-initial-stack.md).
 
 > **Auth.js / NextAuth v5 status:** v5 is still published under the `beta` tag (`npm i next-auth@beta`).
 > It is widely used in production and is the forward path, but pin a specific beta version and re-check

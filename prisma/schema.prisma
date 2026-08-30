@@ -1,0 +1,84 @@
+// Prisma schema — source of truth for the data model.
+// Keep in sync with docs/architecture/database.md.
+//
+// SCOPE NOTE (F-001):
+// The plan intended a datasource-only schema, with User/Role arriving in F-003.
+// Prisma refuses to generate a client when no models are defined, and the shipped
+// Dockerfile runs `npx prisma generate` — so the identity models are brought
+// forward here. They are implemented exactly as specified in
+// docs/architecture/database.md; nothing new is invented.
+//
+// Still to come:
+//   - F-003: isActive enforcement, access-control policies, middleware route gate
+//   - F-005: ChangeRequest, Comment, StatusHistory + their enums
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Azure Database for PostgreSQL Flexible Server requires sslmode=require.
+  // Sourced from Key Vault at runtime; from .env.local in development.
+  url      = env("DATABASE_URL")
+}
+
+/// Application role. A user holds exactly one.
+/// Creating and tracking your own requests is available to every signed-in user
+/// regardless of role — roles gate only deciding, oversight, and administration.
+enum Role {
+  REQUESTER
+  APPROVER
+  MANAGER
+  ADMIN
+}
+
+/// Created just-in-time by the Auth.js Prisma adapter on first Entra ID sign-in.
+/// There is no sign-up flow — the org directory is the source of who exists.
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  name          String?
+  emailVerified DateTime?
+  image         String?
+
+  /// Defaults to REQUESTER; an ADMIN promotes from there.
+  role Role @default(REQUESTER)
+
+  /// Deactivation replaces deletion, so attribution on historic requests survives.
+  /// Re-read on every data-layer call, so it takes effect immediately.
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts Account[]
+
+  @@index([role])
+}
+
+/// Auth.js adapter table linking a User to their Entra ID identity.
+/// Not modified by application code.
+///
+/// No Session or VerificationToken table: sessions are JWT, not database-backed,
+/// because middleware runs on the Edge runtime and cannot reach Prisma.
+/// See docs/architecture/security.md.
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}

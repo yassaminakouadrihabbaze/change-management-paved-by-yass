@@ -1,7 +1,9 @@
-# Project: [PROJECT_NAME]
+# Project: Change Management System
 
 ## What This Is
-[One-line description of the product. Replace this after running /init-product]
+A change management system for creating, reviewing, approving, tracking and completing change requests — with role-based actions, comments, an append-only status history, and a filterable dashboard. Deliberately **not** an ITIL/CAB tool. See @docs/product/PRD.md.
+
+**Current phase: 3 — Feature development.** PRD and architecture docs are populated. Next backlog item is **F-001 (project scaffolding)** — the repo is documentation-only until it's done.
 
 ## Workflow Phases
 
