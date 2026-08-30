@@ -18,7 +18,7 @@
 | — | Line-ending fix | `fix/line-endings` | ✅ Merged | PR #2. Post-merge defect: lint failed on Windows checkouts. |
 | — | F-001 findings | `docs/f-001-findings` | ✅ Merged | PR #3. |
 | **F-002** | **Authentication (Entra ID)** | `feature/F-002` → PR #4 **merged** | 🔨 **Merged, not complete** | 9 of 14 criteria met. **AC-10 blocked** (FN-7, database password), **AC-11–AC-14 blocked** (FN-8, no Entra tenant). Stays 🔨 until both close. |
-| **F-003** | **Access control & `isActive`** | `feature/F-003` | 🔨 **Committed, not complete** | 9 of 11 criteria met. **AC-10, AC-11 blocked** (FN-9 → FN-7). Not pushed, no PR. |
+| **F-003** | **Access control & `isActive`** | `feature/F-003` → PR #6 | 🔨 **Merged, not complete** | 9 of 11 criteria met. **AC-10, AC-11 blocked** (FN-9 → FN-7). Stays 🔨 until the data layer is proven. |
 
 > **What works today:** lint, typecheck, **149 unit tests**, **36 E2E tests** and a clean production
 > build. Route gating, role-aware access to `/admin/*`, deactivated-account refusal, session shape
