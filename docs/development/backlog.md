@@ -19,7 +19,7 @@
 | ID | Feature | Priority | Status | Dependencies | Branch | Completed |
 |----|---------|----------|--------|--------------|--------|-----------|
 | F-001 | Project scaffolding (per architecture decisions / chosen stack) | P0 | ✅ | — | `feature/F-001` | 2026-08-28 |
-| F-002 | Authentication — Entra ID sign in / sign out (**no sign-up**) | P0 | 🔨 | F-001 | `feature/F-002` | |
+| F-002 | Authentication — Entra ID sign in / sign out (**no sign-up**) | P0 | 🔨 | F-001 | `feature/F-002` (PR #4 **merged**) | — |
 | F-003 | Access-control policies + role-aware route gate + `isActive` enforcement | P0 | 📋 | F-002 | | |
 | F-004 | Environment config (dev/preview/prod) | P0 | 📋 | F-001 | | |
 
@@ -43,6 +43,11 @@
 >   enforcement in the data layer.
 > - **⛔ The migration still does not exist.** It was in F-002's scope but is blocked on the local
 >   PostgreSQL password (`scram-sha-256` required; credentials unknown). See **FN-7**.
+> - **⚠️ F-002 is merged but deliberately NOT marked ✅ Done.** PR #4 merged to `main` on 2026-08-28
+>   with **9 of 14 acceptance criteria met**. It stays 🔨 because **nobody can sign in yet** —
+>   AC-10…AC-14 are blocked by **FN-7** (no database migration) and **FN-8** (no Entra tenant).
+>   Marking it Done would misrepresent the state of the product. Move it to ✅ only once both
+>   findings are closed and the blocked criteria actually pass.
 > - **F-006's transition guard depends on the `Role` enum**, which now already exists.
 
 ## Phase 2: Core Features

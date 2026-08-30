@@ -17,7 +17,7 @@
 | F-001 | Project scaffolding | `feature/F-001` | ✅ Merged | PR #1. All 9 criteria verified. |
 | — | Line-ending fix | `fix/line-endings` | ✅ Merged | PR #2. Post-merge defect: lint failed on Windows checkouts. |
 | — | F-001 findings | `docs/f-001-findings` | ✅ Merged | PR #3. |
-| **F-002** | **Authentication (Entra ID)** | `feature/F-002` | 🔨 **Partially complete** | 9 of 14 criteria met. **AC-10 blocked** (database password), **AC-11–AC-14 blocked** (no Entra tenant). Not merged. |
+| **F-002** | **Authentication (Entra ID)** | `feature/F-002` → PR #4 **merged** | 🔨 **Merged, not complete** | 9 of 14 criteria met. **AC-10 blocked** (FN-7, database password), **AC-11–AC-14 blocked** (FN-8, no Entra tenant). Stays 🔨 until both close. |
 
 > **What works today:** lint, typecheck, **51 unit tests**, **20 E2E tests** and a clean production
 > build. Route gating, session shape, role propagation and the sign-in page are implemented and
@@ -45,7 +45,7 @@
 
 - **F-001 (project scaffolding) — complete and verified.** Next.js 14 + TypeScript strict + Tailwind + shadcn/ui tokens + Prisma + Vitest + Playwright, fitted around the template's existing Dockerfile, Terraform and pipeline. Verification: typecheck ✅, lint ✅, 13 unit tests ✅, `prisma generate` ✅, standalone build ✅, 3 E2E tests ✅.
 
-- **F-002 (authentication) — implemented, partially verified, not merged.** Auth.js v5 beta.32 with
+- **F-002 (authentication) — implemented, partially verified, merged via PR #4.** Auth.js v5 beta.32 with
   the Microsoft Entra ID provider, split config (Edge-safe `auth.config.ts` for middleware, full
   `auth.ts` with `PrismaAdapter`), JWT sessions at 24h, `/signin`, a placeholder protected
   `/dashboard`, and a session-aware `/` redirect. Verification: lint ✅, typecheck ✅, **51 unit
