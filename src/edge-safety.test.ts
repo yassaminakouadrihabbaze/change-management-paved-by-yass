@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -110,5 +110,50 @@ describe('Edge runtime safety', () => {
     // anything — not because the boundary is correct.
     const specifiers = collectImports(resolve(SRC, 'auth.ts'))
     expect(specifiers).toContain('@auth/prisma-adapter')
+  })
+
+  it('F-003 AC-9: the authorization module reaches no database code', () => {
+    // authz.ts is imported by middleware, so it inherits the Edge constraint.
+    // It must also stay pure for its own sake — the exhaustive rule tests run
+    // without any infrastructure precisely because it has no I/O.
+    const reachable = transitiveSpecifiers(resolve(SRC, 'lib/authz.ts'))
+    for (const forbidden of [...FORBIDDEN, 'next-auth', '@/auth', 'server-only']) {
+      expect([...reachable]).not.toContain(forbidden)
+    }
+  })
+
+  it('F-003 AC-9: the authorization module imports nothing at all', () => {
+    // Strongest form of the guarantee: a module with no imports cannot acquire
+    // a database dependency transitively, however the codebase evolves.
+    expect(collectImports(resolve(SRC, 'lib/authz.ts'))).toEqual([])
+  })
+
+  it('F-003 AC-8: only src/lib/db and src/lib/data touch the Prisma client', () => {
+    // data-access.md rule 1. src/auth.ts is the documented exception — it passes
+    // the client to PrismaAdapter rather than querying with it.
+    const offenders: string[] = []
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = resolve(dir, entry.name)
+        if (entry.isDirectory()) {
+          walk(full)
+          continue
+        }
+        if (!/\.tsx?$/.test(entry.name)) continue
+
+        const rel = full.slice(SRC.length + 1).replace(/\\/g, '/')
+        const allowed =
+          rel.startsWith('lib/db/') || rel.startsWith('lib/data/') || rel === 'auth.ts'
+        if (allowed) continue
+
+        const specifiers = collectImports(full)
+        if (specifiers.some((s) => s === '@prisma/client' || s.endsWith('/lib/db'))) {
+          offenders.push(rel)
+        }
+      }
+    }
+    walk(SRC)
+
+    expect(offenders).toEqual([])
   })
 })

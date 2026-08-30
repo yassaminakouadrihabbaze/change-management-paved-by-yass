@@ -32,7 +32,26 @@ export default async function SignInPage({
         </p>
       </div>
 
-      {params.error ? (
+      {params.error === 'AccountInactive' ? (
+        /*
+         * Distinguished from a generic failure deliberately. A deactivated user
+         * who saw only a sign-in form would sign in again, be refused again, and
+         * bounce — with no idea why. Naming the cause is what stops that loop.
+         * It reveals only that their own account is deactivated, which they are
+         * entitled to know.
+         */
+        <div
+          role="alert"
+          data-testid="inactive-notice"
+          className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-foreground"
+        >
+          <p className="font-medium">Your account is not active</p>
+          <p className="mt-1 text-muted-foreground">
+            This account has been deactivated, so it cannot access the system. Contact your
+            administrator if you believe this is wrong.
+          </p>
+        </div>
+      ) : params.error ? (
         <div
           role="alert"
           className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-foreground"

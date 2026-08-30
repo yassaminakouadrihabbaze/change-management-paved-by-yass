@@ -28,6 +28,11 @@ export interface TestUser {
   email: string
   name?: string
   role?: 'REQUESTER' | 'APPROVER' | 'MANAGER' | 'ADMIN'
+  /**
+   * Defaults to true so existing tests stay signed in. Set false to exercise
+   * the deactivated-account path (F-003).
+   */
+  isActive?: boolean
 }
 
 export async function createSessionCookieValue(user: TestUser): Promise<string> {
@@ -50,6 +55,7 @@ export async function createSessionCookieValue(user: TestUser): Promise<string> 
       email: user.email,
       name: user.name ?? 'Test User',
       role: user.role ?? 'REQUESTER',
+      isActive: user.isActive ?? true,
     },
   })
 }
